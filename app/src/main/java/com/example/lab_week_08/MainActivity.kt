@@ -1,8 +1,15 @@
 package com.example.lab_week_08
 
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.NetworkType
@@ -11,84 +18,114 @@ import androidx.work.WorkManager
 import com.example.lab_week_08.worker.FirstWorker
 import com.example.lab_week_08.worker.SecondWorker
 
-class MainActivity : AppCompatActivity() { // [cite: 80]
+class MainActivity : AppCompatActivity() {
 
-    // Create an instance of a work manager
-    // Work manager manages all your requests and workers
-    // it also sets up the sequence for all your processes
-    private val workManager by lazy { // [cite: 82]
+    private val workManager by lazy {
         WorkManager.getInstance(applicationContext)
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) { // [cite: 83]
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main) // [cite: 83]
+        enableEdgeToEdge() //
+        setContentView(R.layout.activity_main)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets -> //
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars()) //
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom) //
+            insets //
+        }
 
-        // Create a constraint of which your workers are bound to.
-        // Here the workers cannot execute the given process if
-        // there's no internet connection
-        val networkConstraints = Constraints.Builder() // [cite: 86]
-            .setRequiredNetworkType(NetworkType.CONNECTED) // [cite: 87]
+        // BARU (Langkah 7): Meminta izin notifikasi
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { //
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != //
+                PackageManager.PERMISSION_GRANTED
+            ) { //
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1) //
+            }
+        }
+
+        // Kode dari Part 1
+        val networkConstraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val Id = "001" // [cite: 88]
+        val id = "001"
 
-        // Create a one time work request that includes
-        // all the constraints and inputs needed for the worker
-        // This request is created for the FirstWorker class
-        val firstRequest = OneTimeWorkRequest // [cite: 96]
-            .Builder(FirstWorker::class.java) // [cite: 97]
-            .setConstraints(networkConstraints) // [cite: 97]
-            .setInputData( // [cite: 97]
+        val firstRequest = OneTimeWorkRequest
+            .Builder(FirstWorker::class.java)
+            .setConstraints(networkConstraints)
+            .setInputData(
                 getIdInputData(
-                    FirstWorker.INPUT_DATA_ID, Id // [cite: 98]
+                    FirstWorker.INPUT_DATA_ID, id
                 )
             )
-            .build() // [cite: 99]
+            .build()
 
-        // This request is created for the SecondWorker class
-        val secondRequest = OneTimeWorkRequest // [cite: 101]
-            .Builder(SecondWorker::class.java) // [cite: 102]
-            .setConstraints(networkConstraints) // [cite: 102]
-            .setInputData( // [cite: 103]
+        val secondRequest = OneTimeWorkRequest
+            .Builder(SecondWorker::class.java)
+            .setConstraints(networkConstraints)
+            .setInputData(
                 getIdInputData(
-                    SecondWorker.INPUT_DATA_ID, Id // [cite: 104]
+                    SecondWorker.INPUT_DATA_ID, id
                 )
             )
-            .build() // [cite: 105]
+            .build()
 
-        // Sets up the process sequence from the work manager instance
-        // Here it starts with FirstWorker, then SecondWorker
-        workManager.beginWith(firstRequest) // [cite: 107]
-            .then(secondRequest) // [cite: 113]
-            .enqueue() // [cite: 113]
+        workManager.beginWith(firstRequest)
+            .then(secondRequest)
+            .enqueue()
 
-        // Here, we receive the output and displaying the result as a toast message
-        // Here we're observing the returned LiveData and getting the
-        // state result of the worker (Can be SUCCEEDED, FAILED, or CANCELLED)
-        workManager.getWorkInfoByIdLiveData(firstRequest.id) // [cite: 127]
-            .observe(this) { info -> // [cite: 128]
-                if (info.state.isFinished) { // [cite: 129]
-                    showResult("First process is done") // [cite: 132]
+        workManager.getWorkInfoByIdLiveData(firstRequest.id)
+            .observe(this) { info ->
+                if (info.state.isFinished) {
+                    showResult("First process is done")
                 }
             }
 
-        workManager.getWorkInfoByIdLiveData(secondRequest.id) // [cite: 133]
-            .observe(this) { info -> // [cite: 134]
-                if (info.state.isFinished) { // [cite: 135]
-                    showResult("Second process is done") // [cite: 136]
+        // DIMODIFIKASI (Langkah 9):
+        workManager.getWorkInfoByIdLiveData(secondRequest.id) //
+            .observe(this) { info -> //
+                if (info.state.isFinished) { //
+                    showResult("Second process is done") //
+                    launchNotificationService() // PANGGIL FUNGSI BARU
                 }
             }
-    } // [cite: 139]
+    }
 
-    // Build the data into the correct format before passing it to the worker as input
-    private fun getIdInputData(IdKey: String, IdValue: String): Data = // [cite: 142]
-        Data.Builder() // [cite: 143]
-            .putString(IdKey, IdValue) // [cite: 144]
-            .build() // [cite: 145]
+    private fun getIdInputData(idKey: String, idValue: String) =
+        Data.Builder()
+            .putString(idKey, idValue)
+            .build()
 
-    // Show the result as toast
-    private fun showResult(message: String) { // [cite: 147]
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show() // [cite: 150]
-    } // [cite: 148]
-} // [cite: 149]
+    private fun showResult(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    // BARU (Langkah 8): Fungsi untuk meluncurkan service
+    // Launch the NotificationService
+    private fun launchNotificationService() { //
+        // Observe if the service process is done or not
+        // If it is, show a toast with the channel ID in it
+        NotificationService.trackingCompletion.observe( //
+            this
+        ) { Id -> //
+            showResult("Process for Notification Channel ID $Id is done!") //
+        }
+
+        // Create an Intent to start the NotificationService
+        // An ID of "001" is also passed as the notification channel ID
+        val serviceIntent = Intent( //
+            this,
+            NotificationService::class.java
+        ).apply { //
+            putExtra(EXTRA_ID, "001") //
+        }
+
+        // Start the foreground service through the Service Intent
+        ContextCompat.startForegroundService(this, serviceIntent) //
+    }
+
+    // BARU (Langkah 8): Companion object
+    companion object { //
+        const val EXTRA_ID = "Id" //
+    }
+}
